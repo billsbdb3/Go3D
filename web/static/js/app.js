@@ -1,0 +1,500 @@
+const API = 'http://192.168.3.26:3000/api';
+
+// Navigation
+document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+        e.preventDefault();
+        const view = item.dataset.view;
+        switchView(view);
+    });
+});
+
+function switchView(viewName) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    
+    document.getElementById(viewName).classList.add('active');
+    const navItem = document.querySelector(`[data-view="${viewName}"]`);
+    if (navItem) {
+        navItem.classList.add('active');
+    }
+    
+    loadViewData(viewName);
+}
+
+function loadViewData(view) {
+    switch(view) {
+        case 'dashboard':
+            loadDashboard();
+            break;
+        case 'models':
+            loadModels();
+            break;
+        case 'libraries':
+            loadLibraries();
+            break;
+        case 'collections':
+            loadCollections();
+            break;
+    }
+}
+
+// Load Data
+async function loadDashboard() {
+    const [models, libs, colls, tags] = await Promise.all([
+        fetch(`${API}/models`).then(r => r.json()).catch(() => []),
+        fetch(`${API}/libraries`).then(r => r.json()).catch(() => []),
+        fetch(`${API}/collections`).then(r => r.json()).catch(() => []),
+        fetch(`${API}/tags`).then(r => r.json()).catch(() => [])
+    ]);
+
+    document.getElementById('statModels').textContent = models?.length || 0;
+    document.getElementById('statLibraries').textContent = libs?.length || 0;
+    document.getElementById('statCollections').textContent = colls?.length || 0;
+    document.getElementById('statTags').textContent = tags?.length || 0;
+
+    renderModels(models?.slice(0, 6) || [], 'recentModels');
+}
+
+async function loadModels() {
+    const models = await fetch(`${API}/models`).then(r => r.json()).catch(() => []);
+    renderModels(models || [], 'modelsList');
+}
+
+async function loadLibraries() {
+    const libs = await fetch(`${API}/libraries`).then(r => r.json()).catch(() => []);
+    renderLibraries(libs || []);
+}
+
+async function loadCollections() {
+    const colls = await fetch(`${API}/collections`).then(r => r.json()).catch(() => []);
+    renderCollections(colls || []);
+}
+
+// Render Models with 3D Previews
+async function renderModels(models, containerId) {
+    const container = document.getElementById(containerId);
+    if (!models || models.length === 0) {
+        container.innerHTML = '<p style="color: #666;">No models found</p>';
+        return;
+    }
+    
+    const libs = await fetch(`${API}/libraries`).then(r => r.json()).catch(() => []);
+    const libMap = {};
+    libs.forEach(lib => libMap[lib.id] = lib.name);
+    
+    const html = models.map((m, idx) => `
+        <div class="model-card" onclick="viewModelFiles(${m.id})">
+            <div class="model-preview" id="${containerId}-preview-${idx}" data-model-id="${m.id}" style="position: relative; width: 100%; height: 200px; background: #0f0f23; border-radius: 8px 8px 0 0; display: flex; align-items: center; justify-content: center; color: #666;">
+                <div style="font-size: 48px;">📦</div>
+            </div>
+            <div class="model-info">
+                <div class="model-title">${m.name}</div>
+                <div class="model-desc">${m.description || 'No description'}</div>
+                <div class="model-meta">
+                    <span>📁 ${libMap[m.library_id] || 'Library ' + m.library_id}</span>
+                    <span>📅 ${new Date(m.created_at).toLocaleDateString()}</span>
+                </div>
+            </div>
+        </div>
+    `).join('');
+    
+    container.innerHTML = html;
+    
+    setTimeout(() => {
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting && !entry.target.dataset.loaded) {
+                    entry.target.dataset.loaded = 'true';
+                    const modelId = entry.target.dataset.modelId;
+                    loadModelPreview(modelId, entry.target);
+                }
+            });
+        }, { rootMargin: '50px' });
+        
+        models.forEach((m, idx) => {
+            const previewEl = document.getElementById(containerId + '-preview-' + idx);
+            if (previewEl) observer.observe(previewEl);
+        });
+    }, 200);
+}
+
+async function loadModelPreview(modelId, container) {
+    try {
+        const files = await fetch(`${API}/models/${modelId}/files`).then(r => r.json()).catch(() => []);
+        if (!files || files.length === 0) return;
+        
+        const stlFile = files.find(f => f.filename.toLowerCase().endsWith('.stl'));
+        if (stlFile) {
+            loadCardPreview(stlFile.id, container);
+        }
+    } catch (error) {
+        console.error('Error loading model preview:', error);
+    }
+}
+
+async function loadCardPreview(fileId, container) {
+    container.innerHTML = '';
+    
+    while (typeof THREE === 'undefined') {
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0f0f23);
+    
+    const aspect = container.clientWidth / container.clientHeight;
+    const camera = new THREE.PerspectiveCamera(50, aspect, 0.1, 1000);
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    container.appendChild(renderer.domElement);
+    
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(1, 1, 1);
+    scene.add(directionalLight);
+    
+    const loader = new STLLoader();
+    loader.load(
+        API + '/files/' + fileId + '/download',
+        (geometry) => {
+            geometry.computeBoundingBox();
+            const center = new THREE.Vector3();
+            geometry.boundingBox.getCenter(center);
+            geometry.translate(-center.x, -center.y, -center.z);
+            
+            const size = new THREE.Vector3();
+            geometry.boundingBox.getSize(size);
+            const maxDim = Math.max(size.x, size.y, size.z);
+            
+            const material = new THREE.MeshPhongMaterial({ color: 0x00d4ff, specular: 0x111111, shininess: 200 });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.rotation.x = -Math.PI / 2;
+            
+            scene.add(mesh);
+            
+            const distance = maxDim / (2 * Math.tan(Math.PI * camera.fov / 360));
+            const cameraDistance = distance * 0.8;
+            camera.position.set(cameraDistance, cameraDistance, cameraDistance);
+            camera.lookAt(0, 0, 0);
+            
+            function animate() {
+                requestAnimationFrame(animate);
+                mesh.rotation.z += 0.005;
+                renderer.render(scene, camera);
+            }
+            animate();
+        },
+        undefined,
+        (error) => {
+            container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#f093fb;font-size:12px;">Failed</div>';
+        }
+    );
+}
+
+function renderLibraries(libs) {
+    const html = libs.map(lib => `
+        <div class="library-card">
+            <h3>${lib.name}</h3>
+            <p>${lib.path}</p>
+            <div class="library-actions">
+                <button onclick="scanLibrary(${lib.id})">Scan</button>
+            </div>
+        </div>
+    `).join('');
+    document.getElementById('librariesList').innerHTML = html || '<p style="color: #666;">No libraries found</p>';
+}
+
+function renderCollections(colls) {
+    const html = colls.map(c => `
+        <div class="collection-card">
+            <h3>${c.name}</h3>
+            <p>${c.description || 'No description'}</p>
+        </div>
+    `).join('');
+    document.getElementById('collectionsList').innerHTML = html || '<p style="color: #666;">No collections found</p>';
+}
+
+async function scanLibrary(id) {
+    await fetch(`${API}/libraries/${id}/scan`, { method: 'POST' });
+    showNotification('Scan started', 'success');
+}
+
+// Model Detail View
+async function viewModelFiles(modelId) {
+    const model = await fetch(`${API}/models/${modelId}`).then(r => r.json()).catch(() => null);
+    if (!model) return;
+    
+    const files = await fetch(`${API}/models/${modelId}/files`).then(r => r.json()).catch(() => []);
+    
+    document.getElementById('model-detail-name').textContent = model.name;
+    
+    const content = document.getElementById('model-detail-content');
+    
+    if (files.length === 0) {
+        content.innerHTML = '<p style="color: #666;">No files found</p>';
+    } else {
+        const html = files.map((f, idx) => {
+            const ext = f.filename.toLowerCase().split('.').pop();
+            const isRenderable = ['stl', 'obj', '3mf'].includes(ext);
+            
+            return `
+                <div style="background: #16213e; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+                    <div style="display: flex; gap: 20px; align-items: flex-start;">
+                        ${isRenderable ? `
+                            <div id="detail-preview-${idx}" style="width: 300px; height: 300px; background: #0f0f23; border-radius: 8px; flex-shrink: 0;"></div>
+                        ` : ''}
+                        <div style="flex: 1;">
+                            <h3 style="margin: 0 0 10px 0;">${f.filename}</h3>
+                            <div style="color: #666; margin-bottom: 15px;">${(f.size / 1024).toFixed(1)} KB</div>
+                            <a href="${API}/files/${f.id}/download" download style="background: #667eea; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; display: inline-block;">Download</a>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        content.innerHTML = html;
+        
+        files.forEach((f, idx) => {
+            const ext = f.filename.toLowerCase().split('.').pop();
+            if (['stl', 'obj', '3mf'].includes(ext)) {
+                const container = document.getElementById('detail-preview-' + idx);
+                if (container) {
+                    setTimeout(() => load3DPreview(f.id, container), idx * 100);
+                }
+            }
+        });
+    }
+    
+    switchView('model-detail');
+}
+
+async function load3DPreview(fileId, container) {
+    while (typeof THREE === 'undefined') {
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0f0f23);
+    
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
+    camera.position.set(50, 50, 50);
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(300, 300);
+    container.appendChild(renderer.domElement);
+    
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.enablePan = true;
+    controls.mouseButtons = {
+        LEFT: THREE.MOUSE.ROTATE,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.PAN
+    };
+    
+    const gridHelper = new THREE.GridHelper(100, 20, 0x444444, 0x222222);
+    scene.add(gridHelper);
+    
+    const axesHelper = new THREE.AxesHelper(30);
+    scene.add(axesHelper);
+    
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(1, 1, 1);
+    scene.add(directionalLight);
+    
+    const loader = new STLLoader();
+    loader.load(
+        API + '/files/' + fileId + '/download',
+        (geometry) => {
+            geometry.computeBoundingBox();
+            const center = new THREE.Vector3();
+            geometry.boundingBox.getCenter(center);
+            geometry.translate(-center.x, -center.y, -center.z);
+            geometry.computeBoundingBox();
+            
+            const size = new THREE.Vector3();
+            geometry.boundingBox.getSize(size);
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const scale = 40 / maxDim;
+            
+            const material = new THREE.MeshPhongMaterial({ color: 0x00d4ff, specular: 0x111111, shininess: 200 });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.scale.setScalar(scale);
+            mesh.rotation.x = -Math.PI / 2;
+            
+            const heightAboveGrid = (size.z * scale) / 2;
+            mesh.position.set(0, heightAboveGrid, 0);
+            
+            scene.add(mesh);
+            
+            controls.target.set(0, heightAboveGrid, 0);
+            camera.lookAt(0, heightAboveGrid, 0);
+            controls.update();
+        }
+    );
+    
+    function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+    }
+    animate();
+}
+
+// Upload
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('dragover');
+});
+
+dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('dragover');
+});
+
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    handleFiles(e.dataTransfer.files);
+});
+
+fileInput.addEventListener('change', (e) => {
+    handleFiles(e.target.files);
+});
+
+function handleFiles(files) {
+    const uploadList = document.getElementById('uploadList');
+    const librarySelect = document.getElementById('librarySelect');
+    const libraryId = librarySelect.value;
+    
+    if (!libraryId) {
+        showNotification('Please select a library first', 'error');
+        return;
+    }
+    
+    Array.from(files).forEach(async file => {
+        const item = document.createElement('div');
+        item.className = 'upload-item';
+        item.innerHTML = `
+            <div>
+                <div style="font-weight: 500;">${file.name}</div>
+                <div style="font-size: 12px; color: #666;">${(file.size / 1024 / 1024).toFixed(2)} MB</div>
+                <div class="upload-progress">
+                    <div class="upload-progress-bar" style="width: 0%"></div>
+                </div>
+            </div>
+            <button class="btn-icon">⏳</button>
+        `;
+        uploadList.appendChild(item);
+        
+        const progressBar = item.querySelector('.upload-progress-bar');
+        const statusBtn = item.querySelector('.btn-icon');
+        
+        try {
+            const formData = new FormData();
+            formData.append('model_name', file.name.replace(/\.(zip|stl|obj|3mf)$/i, ''));
+            formData.append('files[]', file);
+            
+            const xhr = new XMLHttpRequest();
+            
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const percent = (e.loaded / e.total) * 100;
+                    progressBar.style.width = percent + '%';
+                }
+            });
+            
+            xhr.addEventListener('load', () => {
+                if (xhr.status === 200) {
+                    item.style.borderColor = '#43e97b';
+                    statusBtn.textContent = '✓';
+                    showNotification(`${file.name} uploaded successfully`, 'success');
+                    setTimeout(() => loadModels(), 1000);
+                } else {
+                    item.style.borderColor = '#f093fb';
+                    statusBtn.textContent = '✗';
+                    showNotification(`Failed to upload ${file.name}`, 'error');
+                }
+            });
+            
+            xhr.addEventListener('error', () => {
+                item.style.borderColor = '#f093fb';
+                statusBtn.textContent = '✗';
+                showNotification(`Error uploading ${file.name}`, 'error');
+            });
+            
+            xhr.open('POST', `${API}/libraries/${libraryId}/upload`);
+            xhr.send(formData);
+            
+        } catch (err) {
+            item.style.borderColor = '#f093fb';
+            statusBtn.textContent = '✗';
+            showNotification('Upload failed: ' + err.message, 'error');
+        }
+    });
+}
+
+// Search
+document.getElementById('searchInput').addEventListener('input', (e) => {
+    const query = e.target.value;
+    if (query.length > 2) {
+        searchModels(query);
+    }
+});
+
+async function searchModels(query) {
+    const results = await fetch(`${API}/search?q=${encodeURIComponent(query)}`).then(r => r.json()).catch(() => []);
+    console.log('Search results:', results);
+}
+
+// Notifications
+function showNotification(message, type = 'info') {
+    const notif = document.createElement('div');
+    notif.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: ${type === 'success' ? '#43e97b' : type === 'error' ? '#f093fb' : '#667eea'};
+        color: white;
+        padding: 16px 24px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        z-index: 2000;
+        animation: slideIn 0.3s;
+    `;
+    notif.textContent = message;
+    document.body.appendChild(notif);
+    setTimeout(() => notif.remove(), 3000);
+}
+
+function closeModal() {
+    document.getElementById('modal').style.display = 'none';
+}
+
+function closeViewer() {
+    document.getElementById('viewer-modal').style.display = 'none';
+}
+
+// Populate library selector on upload page
+document.querySelectorAll('[data-view="upload"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const libs = await fetch(`${API}/libraries`).then(r => r.json()).catch(() => []);
+        const select = document.getElementById('librarySelect');
+        if (select) {
+            select.innerHTML = '<option value="">Select a library...</option>' + 
+                libs.map(lib => `<option value="${lib.id}">${lib.name}</option>`).join('');
+        }
+    });
+});
+
+// Initialize
+loadDashboard();

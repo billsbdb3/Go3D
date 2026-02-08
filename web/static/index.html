@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Library - Professional Model Management</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="logo">
+            <svg width="32" height="32" viewBox="0 0 32 32">
+                <rect width="32" height="32" rx="8" fill="url(#gradient)"/>
+                <path d="M8 12L16 8L24 12L16 16L8 12Z" fill="white" opacity="0.9"/>
+                <path d="M8 16L16 20L24 16" stroke="white" stroke-width="2" fill="none" opacity="0.7"/>
+                <path d="M8 20L16 24L24 20" stroke="white" stroke-width="2" fill="none" opacity="0.5"/>
+                <defs>
+                    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#667eea"/>
+                        <stop offset="100%" style="stop-color:#764ba2"/>
+                    </linearGradient>
+                </defs>
+            </svg>
+            <span>3D Library</span>
+        </div>
+        
+        <nav class="nav">
+            <a href="#" class="nav-item active" data-view="dashboard">
+                <svg width="20" height="20" fill="currentColor"><rect width="8" height="8"/><rect x="12" width="8" height="8"/><rect y="12" width="8" height="8"/><rect x="12" y="12" width="8" height="8"/></svg>
+                Dashboard
+            </a>
+            <a href="#" class="nav-item" data-view="models">
+                <svg width="20" height="20" fill="currentColor"><path d="M10 2L2 6L10 10L18 6L10 2Z"/><path d="M2 10L10 14L18 10" stroke="currentColor" fill="none"/><path d="M2 14L10 18L18 14" stroke="currentColor" fill="none"/></svg>
+                Models
+            </a>
+            <a href="#" class="nav-item" data-view="libraries">
+                <svg width="20" height="20" fill="currentColor"><path d="M4 2H16C17.1 2 18 2.9 18 4V18C18 19.1 17.1 20 16 20H4C2.9 20 2 19.1 2 18V4C2 2.9 2.9 2 4 2Z"/></svg>
+                Libraries
+            </a>
+            <a href="#" class="nav-item" data-view="collections">
+                <svg width="20" height="20" fill="currentColor"><rect x="2" y="2" width="16" height="16" rx="2"/><rect x="6" y="6" width="8" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                Collections
+            </a>
+            <a href="#" class="nav-item" data-view="upload">
+                <svg width="20" height="20" fill="currentColor"><path d="M10 2L10 14M10 2L6 6M10 2L14 6"/><path d="M2 14L2 18L18 18L18 14" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+                Upload
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="storage-info">
+                <div class="storage-bar">
+                    <div class="storage-used" style="width: 45%"></div>
+                </div>
+                <small>4.5 GB / 10 GB used</small>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main">
+        <!-- Header -->
+        <header class="header">
+            <div class="search-bar">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="9" cy="9" r="7"/><path d="M14 14L19 19"/>
+                </svg>
+                <input type="text" placeholder="Search models, collections, tags..." id="searchInput">
+            </div>
+            <div class="header-actions">
+                <button class="btn-icon" title="Notifications">
+                    <svg width="20" height="20" fill="currentColor"><path d="M10 2C7 2 5 4 5 7V11L3 13V14H17V13L15 11V7C15 4 13 2 10 2Z"/><path d="M9 17H11C11 18 10.5 19 10 19C9.5 19 9 18 9 17Z"/></svg>
+                </button>
+                <button class="btn-icon" title="Settings">
+                    <svg width="20" height="20" fill="currentColor"><circle cx="10" cy="10" r="3"/><path d="M10 2L11 5L14 4L15 7L18 8L17 11L20 12L19 15L16 16L15 19L12 18L11 21L8 20L7 17L4 16L3 13L6 12L5 9L8 8L9 5L10 2Z"/></svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Dashboard View -->
+        <div id="dashboard" class="view active">
+            <div class="view-header">
+                <h1>Dashboard</h1>
+                <div class="actions">
+                    <button class="btn btn-primary" onclick="showUploadModal()">
+                        <svg width="16" height="16" fill="currentColor"><path d="M8 2V12M8 2L5 5M8 2L11 5"/></svg>
+                        Upload Files
+                    </button>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <svg width="24" height="24" fill="white"><path d="M12 4L4 8L12 12L20 8L12 4Z"/></svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="statModels">-</div>
+                        <div class="stat-label">Models</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                        <svg width="24" height="24" fill="white"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="statLibraries">-</div>
+                        <div class="stat-label">Libraries</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                        <svg width="24" height="24" fill="white"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="statCollections">-</div>
+                        <div class="stat-label">Collections</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                        <svg width="24" height="24" fill="white"><path d="M12 2L15 8L22 9L17 14L18 21L12 18L6 21L7 14L2 9L9 8L12 2Z"/></svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="statTags">-</div>
+                        <div class="stat-label">Tags</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-header">
+                    <h2>Recent Models</h2>
+                    <a href="#" class="link" onclick="switchView('models')">View all →</a>
+                </div>
+                <div class="model-grid" id="recentModels"></div>
+            </div>
+        </div>
+
+        <!-- Models View -->
+        <div id="models" class="view">
+            <div class="view-header">
+                <h1>Models</h1>
+                <div class="actions">
+                    <select class="select" id="filterLibrary">
+                        <option value="">All Libraries</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="showModal('newModelModal')">
+                        <svg width="16" height="16" fill="currentColor"><path d="M8 2V14M2 8H14"/></svg>
+                        New Model
+                    </button>
+                </div>
+            </div>
+            <div class="model-grid" id="modelsList"></div>
+        </div>
+
+        <!-- Libraries View -->
+        <div id="libraries" class="view">
+            <div class="view-header">
+                <h1>Libraries</h1>
+                <button class="btn btn-primary" onclick="showModal('newLibraryModal')">
+                    <svg width="16" height="16" fill="currentColor"><path d="M8 2V14M2 8H14"/></svg>
+                    New Library
+                </button>
+            </div>
+            <div class="library-grid" id="librariesList"></div>
+        </div>
+
+        <!-- Collections View -->
+        <div id="collections" class="view">
+            <div class="view-header">
+                <h1>Collections</h1>
+                <button class="btn btn-primary" onclick="showModal('newCollectionModal')">
+                    <svg width="16" height="16" fill="currentColor"><path d="M8 2V14M2 8H14"/></svg>
+                    New Collection
+                </button>
+            </div>
+            <div class="collection-grid" id="collectionsList"></div>
+        </div>
+
+        <!-- Model Detail View -->
+        <div id="model-detail" class="view">
+            <div class="view-header">
+                <button onclick="switchView('models')" style="background: none; border: none; color: #00d4ff; cursor: pointer; font-size: 24px;">← Back</button>
+                <h1 id="model-detail-name"></h1>
+            </div>
+            <div id="model-detail-content" style="padding: 20px;"></div>
+        </div>
+
+
+        <!-- Upload View -->
+        <div id="upload" class="view">
+            <div class="view-header">
+                <h1>Upload Files</h1>
+            </div>
+                <select id="librarySelect" style="width: 100%; padding: 12px; background: #16213e; color: white; border: 1px solid #2a2a3e; border-radius: 8px; margin-bottom: 20px; font-size: 16px;">
+                    <option value="">Select a library...</option>
+                </select>
+            <div class="upload-container">
+                <div class="upload-zone" id="dropZone">
+                    <svg width="64" height="64" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M32 8V48M32 8L20 20M32 8L44 20"/>
+                        <path d="M8 40V52C8 54 10 56 12 56H52C54 56 56 54 56 52V40"/>
+                    </svg>
+                    <h3>Drop files here or click to browse</h3>
+                    <p>Supports STL, OBJ, 3MF, PLY, GCODE</p>
+                    <input type="file" id="fileInput" multiple accept=".stl,.obj,.3mf,.ply,.gcode" hidden>
+                    <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+                        Select Files
+                    </button>
+                </div>
+                <div class="upload-list" id="uploadList"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modals -->
+    <div id="newLibraryModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>New Library</h2>
+                <button class="btn-icon" onclick="hideModal('newLibraryModal')">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" class="input" id="libName" placeholder="My 3D Models">
+                </div>
+                <div class="form-group">
+                    <label>Path</label>
+                    <input type="text" class="input" id="libPath" placeholder="/data/models">
+                </div>
+                <div class="form-group">
+                    <label>Storage Type</label>
+                    <select class="select" id="libStorage">
+                        <option value="local">Local Storage</option>
+                        <option value="s3">S3 Storage</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="hideModal('newLibraryModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="createLibrary()">Create Library</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="newModelModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>New Model</h2>
+                <button class="btn-icon" onclick="hideModal('newModelModal')">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Library</label>
+                    <select class="select" id="modelLibrary"></select>
+                </div>
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" class="input" id="modelName" placeholder="Dragon Miniature">
+                </div>
+                <div class="form-group">
+                    <label>Path</label>
+                    <input type="text" class="input" id="modelPath" placeholder="/data/models/dragon">
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea class="input" id="modelDesc" rows="3" placeholder="A detailed dragon miniature..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="hideModal('newModelModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="createModel()">Create Model</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="newCollectionModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>New Collection</h2>
+                <button class="btn-icon" onclick="hideModal('newCollectionModal')">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" class="input" id="collName" placeholder="Fantasy Miniatures">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="hideModal('newCollectionModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="createCollection()">Create Collection</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module" src="/static/js/three-loader.js"></script>
+    <script src="/static/js/app.js?v=final"></script>
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2 id="modal-title"></h2>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <div id="viewer-modal" class="modal">
+        <div class="modal-content" style="width: 90%; height: 90%;">
+            <span class="close" onclick="closeViewer()">&times;</span>
+            <div id="viewer-container" style="width: 100%; height: 100%;"></div>
+        </div>
+    </div>
+</body>
+</html>

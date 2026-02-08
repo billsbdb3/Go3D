@@ -1,0 +1,214 @@
+package handlers
+
+import (
+	"archive/zip"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/jmoiron/sqlx"
+)
+
+type UploadHandler struct {
+	db *sqlx.DB
+}
+
+func NewUploadHandler(db *sqlx.DB) *UploadHandler {
+	return &UploadHandler{db: db}
+}
+
+func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
+	libraryID := chi.URLParam(r, "id")
+	
+	// Get library
+	var library struct {
+		ID   int64  `db:"id"`
+		Path string `db:"path"`
+	}
+	err := h.db.Get(&library, "SELECT id, path FROM libraries WHERE id = $1", libraryID)
+	if err != nil {
+		http.Error(w, "Library not found", 404)
+		return
+	}
+
+	// Parse multipart form (100MB max for ZIPs)
+	err = r.ParseMultipartForm(100 << 20)
+	if err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+
+	modelName := r.FormValue("model_name")
+	if modelName == "" {
+		http.Error(w, "model_name required", 400)
+		return
+	}
+
+	// Create model directory
+	modelPath := filepath.Join(library.Path, modelName)
+	os.MkdirAll(modelPath, 0755)
+
+	// Get uploaded files - try both "files[]" and "files"
+	files := r.MultipartForm.File["files[]"]
+	if len(files) == 0 {
+		files = r.MultipartForm.File["files"]
+	}
+	if len(files) == 0 {
+		http.Error(w, "No files uploaded", 400)
+		return
+	}
+	}
+
+	// Create model
+	var modelID int64
+	err = h.db.QueryRow(
+		"INSERT INTO models (library_id, name, path) VALUES ($1, $2, $3) ON CONFLICT (library_id, name) DO UPDATE SET path = $3 RETURNING id",
+		library.ID, modelName, modelPath,
+	).Scan(&modelID)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	uploaded := []string{}
+	for _, fileHeader := range files {
+		file, err := fileHeader.Open()
+		if err != nil {
+			continue
+		}
+		defer file.Close()
+
+		// Check if ZIP file
+		if strings.HasSuffix(strings.ToLower(fileHeader.Filename), ".zip") {
+			// Save ZIP temporarily
+			tmpZip := filepath.Join(os.TempDir(), fileHeader.Filename)
+			tmpFile, err := os.Create(tmpZip)
+			if err != nil {
+				continue
+			}
+			io.Copy(tmpFile, file)
+			tmpFile.Close()
+
+			// Extract ZIP
+			extracted, err := h.extractZip(tmpZip, modelPath, modelID)
+			if err == nil {
+				uploaded = append(uploaded, extracted...)
+			}
+			os.Remove(tmpZip)
+			continue
+		}
+
+		// Regular file - save directly
+		destPath := filepath.Join(modelPath, fileHeader.Filename)
+		dest, err := os.Create(destPath)
+		if err != nil {
+			continue
+		}
+		defer dest.Close()
+
+		// Calculate digest while copying
+		hash := sha256.New()
+		size, err := io.Copy(io.MultiWriter(dest, hash), file)
+		if err != nil {
+			continue
+		}
+
+		digest := fmt.Sprintf("%x", hash.Sum(nil))
+		mimeType := getMimeType(fileHeader.Filename)
+
+		// Save to database
+		_, err = h.db.Exec(
+			"INSERT INTO model_files (model_id, filename, path, size, mime_type, digest) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (model_id, path) DO NOTHING",
+			modelID, fileHeader.Filename, destPath, size, mimeType, digest,
+		)
+		if err == nil {
+			uploaded = append(uploaded, fileHeader.Filename)
+		}
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"model_id": modelID,
+		"uploaded": uploaded,
+		"count":    len(uploaded),
+	})
+}
+
+func (h *UploadHandler) extractZip(zipPath, destDir string, modelID int64) ([]string, error) {
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+
+	extracted := []string{}
+	for _, f := range r.File {
+		// Skip directories and hidden files
+		if f.FileInfo().IsDir() || strings.HasPrefix(filepath.Base(f.Name), ".") {
+			continue
+		}
+
+		// Create subdirectories if needed
+		fpath := filepath.Join(destDir, f.Name)
+		os.MkdirAll(filepath.Dir(fpath), 0755)
+
+		// Extract file
+		outFile, err := os.Create(fpath)
+		if err != nil {
+			continue
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			outFile.Close()
+			continue
+		}
+
+		// Calculate digest while copying
+		hash := sha256.New()
+		size, err := io.Copy(io.MultiWriter(outFile, hash), rc)
+		rc.Close()
+		outFile.Close()
+
+		if err != nil {
+			continue
+		}
+
+		digest := fmt.Sprintf("%x", hash.Sum(nil))
+		mimeType := getMimeType(f.Name)
+
+		// Save to database
+		_, err = h.db.Exec(
+			"INSERT INTO model_files (model_id, filename, path, size, mime_type, digest) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (model_id, path) DO NOTHING",
+			modelID, filepath.Base(f.Name), fpath, size, mimeType, digest,
+		)
+		if err == nil {
+			extracted = append(extracted, f.Name)
+		}
+	}
+
+	return extracted, nil
+}
+
+func getMimeType(filename string) string {
+	ext := strings.ToLower(filepath.Ext(filename))
+	types := map[string]string{
+		".stl":   "model/stl",
+		".obj":   "model/obj",
+		".3mf":   "model/3mf",
+		".ply":   "model/ply",
+		".gcode": "text/x-gcode",
+		".jpg":   "image/jpeg",
+		".jpeg":  "image/jpeg",
+		".png":   "image/png",
+	}
+	if t, ok := types[ext]; ok {
+		return t
+	}
+	return "application/octet-stream"
+}
