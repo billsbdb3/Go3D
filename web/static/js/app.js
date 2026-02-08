@@ -169,7 +169,7 @@ async function loadCardPreview(fileId, container) {
             geometry.boundingBox.getSize(size);
             const maxDim = Math.max(size.x, size.y, size.z);
             
-            const material = new THREE.MeshPhongMaterial({ color: 0x00d4ff, specular: 0x111111, shininess: 200 });
+            const material = new THREE.MeshPhongMaterial({ color: 0xcccccc, specular: 0x111111, shininess: 200 });
             const mesh = new THREE.Mesh(geometry, material);
             mesh.rotation.x = -Math.PI / 2;
             
@@ -239,6 +239,20 @@ async function viewModelFiles(modelId) {
         const html = files.map((f, idx) => {
             const ext = f.filename.toLowerCase().split('.').pop();
             const isRenderable = ['stl', 'obj', '3mf'].includes(ext);
+            const downloadUrl = `${API}/files/${f.id}/download`;
+            
+            // Slicer URLs (based on Manyfold)
+            const slicerLinks = isRenderable ? `
+                <div style="margin-top: 10px;">
+                    <strong style="color: #999; font-size: 0.9em;">Open in:</strong>
+                    <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+                        <a href="prusaslicer://open?file=${encodeURIComponent(downloadUrl)}" style="background: #ff6b35; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 0.85em;">PrusaSlicer</a>
+                        <a href="bambu-studio://open?file=${encodeURIComponent(downloadUrl)}" style="background: #00ae42; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 0.85em;">Bambu Studio</a>
+                        <a href="orcaslicer://open?file=${encodeURIComponent(downloadUrl)}" style="background: #4a90e2; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 0.85em;">OrcaSlicer</a>
+                        <a href="cura://open?file=${encodeURIComponent(downloadUrl)}" style="background: #0066b3; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 0.85em;">Cura</a>
+                    </div>
+                </div>
+            ` : '';
             
             return `
                 <div style="background: #16213e; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
@@ -249,7 +263,8 @@ async function viewModelFiles(modelId) {
                         <div style="flex: 1;">
                             <h3 style="margin: 0 0 10px 0;">${f.filename}</h3>
                             <div style="color: #666; margin-bottom: 15px;">${(f.size / 1024).toFixed(1)} KB</div>
-                            <a href="${API}/files/${f.id}/download" download style="background: #667eea; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; display: inline-block;">Download</a>
+                            <a href="${downloadUrl}" download style="background: #667eea; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; display: inline-block;">Download</a>
+                            ${slicerLinks}
                         </div>
                     </div>
                 </div>
@@ -309,36 +324,105 @@ async function load3DPreview(fileId, container) {
     directionalLight.position.set(1, 1, 1);
     scene.add(directionalLight);
     
-    const loader = new STLLoader();
-    loader.load(
-        API + '/files/' + fileId + '/download',
-        (geometry) => {
-            geometry.computeBoundingBox();
-            const center = new THREE.Vector3();
-            geometry.boundingBox.getCenter(center);
-            geometry.translate(-center.x, -center.y, -center.z);
-            geometry.computeBoundingBox();
-            
-            const size = new THREE.Vector3();
-            geometry.boundingBox.getSize(size);
-            const maxDim = Math.max(size.x, size.y, size.z);
-            const scale = 40 / maxDim;
-            
-            const material = new THREE.MeshPhongMaterial({ color: 0x00d4ff, specular: 0x111111, shininess: 200 });
-            const mesh = new THREE.Mesh(geometry, material);
-            mesh.scale.setScalar(scale);
-            mesh.rotation.x = -Math.PI / 2;
-            
-            const heightAboveGrid = (size.z * scale) / 2;
-            mesh.position.set(0, heightAboveGrid, 0);
-            
-            scene.add(mesh);
-            
-            controls.target.set(0, heightAboveGrid, 0);
-            camera.lookAt(0, heightAboveGrid, 0);
-            controls.update();
+    const fileInfo = await fetch(API + '/files/' + fileId).then(r => r.json()).catch(() => null);
+    if (!fileInfo) return;
+    
+    const ext = fileInfo.filename.toLowerCase().split('.').pop();
+    const url = API + '/files/' + fileId + '/download';
+    
+    if (ext === '3mf') {
+        let attempts = 0;
+        while (typeof ThreeMFLoader === 'undefined' && attempts < 50) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            attempts++;
         }
-    );
+        
+        if (typeof ThreeMFLoader === 'undefined') {
+            console.error('ThreeMFLoader not available');
+            container.innerHTML = ''; container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#f093fb;font-size:12px;">3MF loader not available</div>';
+            return;
+        }
+        
+        const loader = new ThreeMFLoader();
+        loader.load(
+            url,
+            (object) => {
+                // Get bounding box of entire object
+                const box = new THREE.Box3().setFromObject(object);
+                const center = new THREE.Vector3();
+                box.getCenter(center);
+                
+                // Translate all geometries to center (like STL does)
+                object.traverse((child) => {
+                    if (child.isMesh && child.geometry) {
+                        child.geometry.translate(-center.x, -center.y, -center.z);
+                    }
+                });
+                
+                // Recalculate box after translation
+                box.setFromObject(object);
+                const size = new THREE.Vector3();
+                box.getSize(size);
+                
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const scale = 40 / maxDim;
+                
+                object.scale.setScalar(scale);
+                object.rotation.x = -Math.PI / 2;
+                
+                const heightAboveGrid = (size.z * scale) / 2;
+                object.position.set(0, heightAboveGrid, 0);
+                
+                scene.add(object);
+                
+                controls.target.set(0, heightAboveGrid, 0);
+                camera.lookAt(0, heightAboveGrid, 0);
+                controls.update();
+            },
+            undefined,
+            (error) => {
+                console.error('Failed to load 3MF:', error);
+                container.innerHTML = ''; 
+                container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#f093fb;font-size:12px;">3MF load failed</div>';
+            }
+        );
+    } else {
+        const loader = new STLLoader();
+        loader.load(
+            url,
+            (geometry) => {
+                geometry.computeBoundingBox();
+                const center = new THREE.Vector3();
+                geometry.boundingBox.getCenter(center);
+                geometry.translate(-center.x, -center.y, -center.z);
+                geometry.computeBoundingBox();
+                
+                const size = new THREE.Vector3();
+                geometry.boundingBox.getSize(size);
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const scale = 40 / maxDim;
+                
+                const material = new THREE.MeshPhongMaterial({ color: 0xcccccc, specular: 0x111111, shininess: 200 });
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.scale.setScalar(scale);
+                mesh.rotation.x = -Math.PI / 2;
+                
+                const heightAboveGrid = (size.z * scale) / 2;
+                mesh.position.set(0, heightAboveGrid, 0);
+                
+                scene.add(mesh);
+                
+                controls.target.set(0, heightAboveGrid, 0);
+                camera.lookAt(0, heightAboveGrid, 0);
+                controls.update();
+            },
+            undefined,
+            (error) => {
+                console.error('Failed to load STL:', error);
+                container.innerHTML = ""; container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#f093fb;font-size:12px;">Load failed</div>';
+            }
+        );
+    }
     
     function animate() {
         requestAnimationFrame(animate);

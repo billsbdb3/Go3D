@@ -76,3 +76,25 @@ go run cmd/worker/main.go
 ## License
 
 MIT
+
+## 3D Preview Features
+
+### Supported File Formats
+- **STL** - Full 3D preview with interactive controls
+- **OBJ** - Full 3D preview with interactive controls  
+- **3MF** - Full 3D preview with interactive controls
+
+### Viewer Features
+- Interactive orbit controls (rotate, pan, zoom)
+- Auto-centering and scaling to fit viewport
+- Grid floor with RGB axes for orientation
+- Consistent light gray material for all models
+- Lazy loading for performance optimization
+
+### Technical Details
+- THREE.js r170+ (latest) for 3D rendering
+- ES modules with importmap for clean imports
+- Dedicated loaders: STLLoader, OBJLoader, ThreeMFLoader
+- 300x300px detail previews
+- Card thumbnails with auto-rotation
+
