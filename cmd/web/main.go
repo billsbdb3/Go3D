@@ -83,6 +83,7 @@ func main() {
 		r.Get("/models/{id}", modelHandler.Get)
 		r.Delete("/models/{id}", modelHandler.Delete)
 		r.Get("/models/{id}/files", fileHandler.GetModelFiles)
+		r.Post("/models/{id}/preview", modelHandler.SetPreview)
 		r.Post("/models/{id}/tags", tagHandler.AddToModel)
 		r.Get("/models/{id}/tags", tagHandler.GetModelTags)
 

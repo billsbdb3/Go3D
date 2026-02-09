@@ -81,3 +81,20 @@ func (h *ModelHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(204)
 }
+
+func (h *ModelHandler) SetPreview(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req struct {
+		FileID *int `json:"file_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	_, err := h.db.Exec("UPDATE models SET preview_file_id = $1 WHERE id = $2", req.FileID, id)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.WriteHeader(204)
+}

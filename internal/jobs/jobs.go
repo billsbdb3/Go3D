@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log"
 	"path/filepath"
+	"strings"
 
 	"github.com/hibiken/asynq"
 	"github.com/jmoiron/sqlx"
@@ -26,6 +27,37 @@ func NewScanLibraryTask(libraryID int64, path string) (*asynq.Task, error) {
 		return nil, err
 	}
 	return asynq.NewTask(TypeScanLibrary, payload), nil
+}
+
+func setDefaultPreview(db *sqlx.DB, modelID int64) {
+	var files []struct {
+		ID       int64  `db:"id"`
+		Filename string `db:"filename"`
+	}
+	db.Select(&files, "SELECT id, filename FROM model_files WHERE model_id = $1", modelID)
+	
+	var previewID *int64
+	for _, f := range files {
+		ext := strings.ToLower(filepath.Ext(f.Filename))
+		if ext == ".png" || ext == ".jpg" || ext == ".jpeg" {
+			previewID = &f.ID
+			break
+		}
+	}
+	
+	if previewID == nil {
+		for _, f := range files {
+			ext := strings.ToLower(filepath.Ext(f.Filename))
+			if ext == ".stl" || ext == ".obj" || ext == ".3mf" {
+				previewID = &f.ID
+				break
+			}
+		}
+	}
+	
+	if previewID != nil {
+		db.Exec("UPDATE models SET preview_file_id = $1 WHERE id = $2", previewID, modelID)
+	}
 }
 
 func HandleScanLibraryTask(ctx context.Context, t *asynq.Task, db *sqlx.DB) error {
@@ -77,6 +109,8 @@ func HandleScanLibraryTask(ctx context.Context, t *asynq.Task, db *sqlx.DB) erro
 				added++
 			}
 		}
+		
+		setDefaultPreview(db, modelID)
 	}
 
 	log.Printf("Scan complete: %d files scanned, %d models, %d files added", len(files), len(modelDirs), added)

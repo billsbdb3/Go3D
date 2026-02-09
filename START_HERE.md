@@ -3,14 +3,14 @@
 ## Start the Application
 
 ```bash
-# SSH into LXC 104
-pct enter 104
+# Check if running
+systemctl status 3d-library
 
-# Navigate to project
-cd /root/3d-library
+# Start if not running
+systemctl start 3d-library
 
-# Start both services (web + worker)
-./start-all.sh
+# View logs
+journalctl -u 3d-library -f
 ```
 
 **Access:** http://192.168.3.26:3000
@@ -20,39 +20,17 @@ cd /root/3d-library
 ## Stop the Application
 
 ```bash
-# Kill all processes
-pkill -9 -f '3d-library'
-pkill -9 -f 'go run'
+systemctl stop 3d-library
 ```
 
 ---
 
-## Check Status
-
-```bash
-# View server log
-tail -f /tmp/server.log
-
-# View worker log
-tail -f /tmp/worker.log
-
-# Check if running
-ps aux | grep -E 'go run|3d-library'
-```
-
----
-
-## Rebuild After Changes
+## Restart After Changes
 
 ```bash
 cd /root/3d-library
-export PATH=/usr/local/go/bin:$PATH
-
-# Stop old processes
-pkill -9 -f 'go run'
-
-# Restart
-./start-all.sh
+systemctl restart 3d-library
+journalctl -u 3d-library -f
 ```
 
 ---
@@ -64,17 +42,18 @@ pkill -9 -f 'go run'
 - **IP:** 192.168.3.26
 - **Path:** `/root/3d-library`
 - **Port:** 3000
+- **GitHub:** https://github.com/billsbdb3/Go3D
 
 ---
 
-## Key Files
+## Key Features
 
-- `cmd/web/main.go` - Web server
-- `cmd/worker/main.go` - Background worker
-- `internal/handlers/` - API handlers
-- `web/static/` - UI files
-- `.env` - Configuration
-- `FINAL.md` - Complete documentation
+✅ 3D Preview (STL, OBJ, 3MF)
+✅ ZIP extraction with directory preservation
+✅ Slicer integration (PrusaSlicer, Bambu Studio, OrcaSlicer, Cura)
+✅ Full REST API (26 endpoints)
+✅ Background job processing
+✅ Professional web UI
 
 ---
 
@@ -82,46 +61,49 @@ pkill -9 -f 'go run'
 
 ```bash
 # Access database
-sudo -u postgres psql library3d
+PGPASSWORD=dev123 psql -h localhost -U library3d -d library3d
 
 # Check data
 SELECT COUNT(*) FROM models;
-SELECT COUNT(*) FROM libraries;
+SELECT COUNT(*) FROM model_files;
+```
+
+**Credentials:**
+- Database: `library3d`
+- User: `library3d`
+- Password: `dev123`
+
+---
+
+## Git Operations
+
+```bash
+cd /root/3d-library
+git status
+git add -A
+git commit -m "Your message"
+git push origin main
 ```
 
 ---
 
-## Quick Test
+## 3D Viewer Details
 
-```bash
-# Create library
-curl -X POST http://192.168.3.26:3000/api/libraries \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Test","path":"/tmp/test","storage":"local"}'
-
-# List libraries
-curl http://192.168.3.26:3000/api/libraries
-```
+- **THREE.js:** Latest version (r170+)
+- **Formats:** STL, OBJ, 3MF
+- **Features:** Interactive controls, auto-centering, grid floor
+- **Material:** Light gray (0xcccccc)
+- **Cache:** `?v=latest7`
 
 ---
 
 ## If Something Breaks
 
-1. Check logs: `tail -f /tmp/server.log`
+1. Check logs: `journalctl -u 3d-library -f`
 2. Check if Postgres running: `systemctl status postgresql`
 3. Check if Redis running: `systemctl status redis`
-4. Restart everything: `./start-all.sh`
+4. Restart: `systemctl restart 3d-library`
 
 ---
 
-## Next Session Goals
-
-- [ ] Add 3D model preview (THREE.js)
-- [ ] File download endpoints
-- [ ] Thumbnail generation
-- [ ] Docker deployment
-- [ ] Authentication
-
----
-
-**That's it! Just run `./start-all.sh` and you're good to go.**
+**That's it! Service runs automatically on boot.**

@@ -122,6 +122,8 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	h.setDefaultPreview(modelID)
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"uploaded": uploaded,
 		"count":    len(uploaded),
@@ -176,4 +178,35 @@ func (h *UploadHandler) extractZip(zipPath, destDir string, modelID int64) ([]st
 	}
 
 	return extracted, nil
+}
+
+func (h *UploadHandler) setDefaultPreview(modelID int64) {
+	var files []struct {
+		ID       int64  `db:"id"`
+		Filename string `db:"filename"`
+	}
+	h.db.Select(&files, "SELECT id, filename FROM model_files WHERE model_id = $1", modelID)
+	
+	var previewID *int64
+	for _, f := range files {
+		ext := strings.ToLower(filepath.Ext(f.Filename))
+		if ext == ".png" || ext == ".jpg" || ext == ".jpeg" {
+			previewID = &f.ID
+			break
+		}
+	}
+	
+	if previewID == nil {
+		for _, f := range files {
+			ext := strings.ToLower(filepath.Ext(f.Filename))
+			if ext == ".stl" || ext == ".obj" || ext == ".3mf" {
+				previewID = &f.ID
+				break
+			}
+		}
+	}
+	
+	if previewID != nil {
+		h.db.Exec("UPDATE models SET preview_file_id = $1 WHERE id = $2", previewID, modelID)
+	}
 }
